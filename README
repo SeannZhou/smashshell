@@ -1,0 +1,40 @@
+README
+
+SMASH program
+
+Run "make" in the SMASH program directory to compile and build the program. If compiled with no errors 
+you then do "./smash" to being the shell program. You can run with -d flag to see debug prints.
+
+	Once you start the program the SMASH will prompt you right away and you can began passing commands in. The program will
+go into a while loop of reading a processing inputs. It will read in the inputs character by character until it hits &, 
+end of line, and will skip if file redirections are passed in. For file redirections, if they are created/opened successfully 
+right after control returns to main it will check if there are and file redirections, if there where the program will call dup() 
+to save the stdout/stderr/stdin that's being switched then call dup2() to switch it with the passed file. The file will be 
+switched back with at the end of command completed and their file descriptor will be closed. 
+
+	File redirections are processed as the line is read, if the user decides to pass in any files they are opened immediately.
+If a file fails to opened/created it will omit those files and use standard file descriptors for the command. At the end of 
+every command file descriptors are restored and closed.
+
+	After commands are parsed in for any command that can be processed without forking they are processed right away such as:
+cd jobs, pwd, setting any environment variables, or kill. These commands are quick system calls with or without parameters, 
+if the command passed isn't one of these then it continues to fork and call through execve(command, parameters). First the 
+process checks if the command exist in the directory or the path that it's point at, if it's not that then it calls the command
+with /bin/ to see if it's a bin command. ls is executed through the bin command execve of the fork and for other commands they
+are executed if they exist. If any of the execve fails because of unknown file or failed execution they free allocated parameters
+and exit(1) in their respective process. If you call a command with an & then instead of calling pause() it continues right 
+after the fork to pick up the next prompt.
+
+	Echo is called as a function in the program where it parses the command line and prints whatever isn't a variable (prefixed) 
+with $. You can set any enviroment variable by entering "variable=value" into the smash line.  
+
+	When a child process finishes a signal handler will be waiting to reap the process and get it's return value as well as the 
+name of the process. These jobs are managed with a fixed sized array of job structs created at compile time. The program can hold
+up to 10 jobs at once, whenever a process is forked a job is added to the list. When the SIGCHILD handler is reaping these 
+processes it deleted them from the list giving more room for future processes. A SIGSTOP handler is defined to capture any ctrl-z 
+presses when running a process on a foreground. The sigstop handler function will sigstop the foreground process and send a SIGCONT 
+to all the other processes in the jobs list. For ctrl-c HOWEVER it stops all processes in the list.
+
+	You can terminate the program by entering "exit" and smash will exit safely after cleaning up. Any file redirections will be 
+closed. The only memory allocated are for the strings passed in which are freed at the end of every iteration of the parent process 
+as well as failed child processes before they exit. 
